@@ -435,19 +435,6 @@ Accuracy on final character of each sequence, testing long-range dependency mode
 
 7. Mahoney, M. (2011). **Large Text Compression Benchmark**. Available at: http://mattmahoney.net/dc/textdata.html
 
-## Citation
-
-If this work is useful for your research, please cite:
-
-```bibtex
-@misc{she2024char_transformer,
-  author = {She, Yuting},
-  title = {Character-Level Transformer Language Model: An Empirical Study of Optimization Techniques},
-  year = {2024},
-  publisher = {GitHub},
-  howpublished = {\url{https://github.com/SheYuting/char_transformer}}
-}
-```
 
 ## License
 
@@ -460,11 +447,6 @@ This project is for educational and research purposes. The architecture implemen
 - Original Transformer authors (Vaswani et al.) for foundational architecture
 - Text8 dataset creators for benchmark corpus
 
-## Contact
-
-**Author:** Yuting She  
-**Repository:** https://github.com/SheYuting/char_transformer  
-**Date:** November 2024
 
 ---
 
