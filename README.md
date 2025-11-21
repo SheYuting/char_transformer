@@ -158,10 +158,10 @@ max_len = 128           # Sequence length
 ## Dataset
 
 **text8 Corpus**
-- Source: Preprocessed English Wikipedia (100MB)
+- Source: Preprocessed English Wikipedia 
 - Preprocessing: Lowercase conversion, punctuation removal, space normalization
-- Training file: `data/text8_train.txt` (90MB)
-- Test file: `data/text8_test.txt` (10MB)
+- Training file: `data/text8_train.txt` 
+- Test file: `data/text8_test.txt` 
 - Vocabulary size: 27 characters (a-z + space)
 - Sequence length: 128 characters
 
