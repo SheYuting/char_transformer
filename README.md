@@ -1,416 +1,324 @@
 # Character-Level Transformer Language Model: Implementation and Experimental Analysis
 
-A systematic implementation and empirical evaluation of character-level Transformer language models trained on the text8 dataset. This project investigates optimization techniques from "Attention Is All You Need" (Vaswani et al., 2017) including dropout regularization, label smoothing, Noam learning rate scheduling, and the Adam optimizer.
-
-**Repository**: https://github.com/SheYuting/char_transformer
+This project implements and evaluates character-level sequence models for next-character prediction on the text8 dataset. The main objective is to study how different optimisation techniques affect the training behaviour and performance of a small decoder-only Transformer, and to compare it to an LSTM baseline.
 
 ## Repository Structure
 
-```
+```text
 char_transformer/
 │
 ├── data/
-│   ├── text8_train.txt          # Training split 
-│   └── text8_test.txt           # Test split 
+│   ├── text8_train.txt          # Training split
+│   └── text8_test.txt           # Test split
 │
 ├── models/
-│   ├── lstm.py                  # LSTM baseline implementation  
-│   └── models.py                # Transformer models
+│   ├── lstm.py                  # LSTM baseline implementation
+│   └── models.py                # Decoder-only Transformer
 │
 ├── util/
 │   └── generation.py            # Text generation functions
 │
-├── lstm.ipynb                   # LSTM baseline experiments
-├── transformer.ipynb            # Baseline Transformer
-├── transformer_adam.ipynb       # Adam optimizer experiments
-├── transformer__noam.ipynb      # Noam learning rate schedule
-├── transformer_dropout.ipynb    # Dropout regularization
-├── transformer_gradient_smoothing.ipynb  # Label smoothing
+├── lstm.ipynb                   # LSTM baseline experiment
+├── transformer.ipynb            # Baseline Transformer (Optax default Adam)
+├── transformer_adam.ipynb       # Transformer with Transformer-paper Adam
+├── transformer _noam.ipynb      # Transformer with Noam LR schedule
+├── transformer_dropout.ipynb    # Noam + Adam + dropout RNG wiring
+├── transformer_gradient_smoothing.ipynb  # Noam + Adam + label smoothing
 │
 ├── requirements.txt             # Python dependencies
 ├── .gitignore                   # Git ignore patterns
 └── README.md                    # This file
 ```
 
-## Project Overview
+## Model Architectures
 
-This project implements and evaluates character-level sequence models for next-character prediction on the text8 dataset (100MB preprocessed Wikipedia text). The primary focus is systematic comparison of optimization techniques and their impact on training dynamics, convergence behavior, and final model performance.
+### Transformer Decoder
 
-###Architectures Implemented
+The main model is a GPT-style decoder-only Transformer:
 
-**Transformer Decoder**
-- Multi-head self-attention mechanism with causal masking
-- Sinusoidal positional encoding
-- Layer normalization and residual connections
-- Position-wise feed-forward networks
-- **Specifications:** 6 layers, 64 embedding dimensions, 8 attention heads, ~308K parameters
+- Multi-head self-attention with causal masking
+- Learned token and positional embeddings
+- Layer normalisation and residual connections
+- Position-wise feed-forward networks with expansion ratio 4
+- Shared input and output embeddings
 
-**LSTM Baseline**
-- Recurrent architecture with hidden state
-- Standard benchmark for sequence modeling tasks
-- Comparative baseline for Transformer performance
+Configuration used in all Transformer experiments:
 
-## Model Architecture
-
-**Transformer Decoder Specifications:**
 ```python
-d_model = 64            # Embedding dimension
-n_layers = 6            # Transformer blocks
-n_heads = 8             # Attention heads per layer
-d_ff = 256              # Feed-forward hidden dimension (4x expansion)
-context_length = 128    # Sequence length
-dropout = 0.1           # (when enabled)
-vocab_size = 27         # Character vocabulary
-mlp_ratio = 4           # FFN expansion factor
+vocab_size = 27      # a–z plus space
+d_model    = 256     # embedding / hidden dimension
+n_heads    = 8       # attention heads
+n_layers   = 2       # Transformer blocks
+max_len    = 128     # maximum supported sequence length
+B, T       = 128, 32 # training batch size and context length
 ```
 
-**Total Parameters:** Approximately 308,000 (~0.31M)
+The model supports sequences up to length 128, but all training and evaluation windows use T = 32 characters.
 
-**Parameter Breakdown:**
-- Token embeddings: 1,728
-- Positional embeddings: 8,192
-- Transformer blocks (6x): 296,448
-- Output projection: 1,728
+### LSTM Baseline
 
-## Experimental Configurations
+The recurrent baseline is a stacked LSTM defined in `lstm.py`:
 
-Five systematic experiments isolate the effect of individual optimization techniques:
-
-### 1. Baseline Transformer (`transformer.ipynb`)
-Standard Transformer decoder with minimal modifications. Establishes performance baseline.
-
-**Configuration:**
-- Optimizer: Adam (lr=0.001)
-- No dropout, no label smoothing
-- Fixed learning rate
-
-**Results:**
-- Test Loss: 1.2931
-- Test Accuracy: 59.4%
-- Last Character Accuracy: 63.0%
-- Training Time: 249.5 seconds
-
-### 2. Adam Optimizer (`transformer_adam.ipynb`)
-Enhanced Adam implementation with default hyperparameters.
-
-**Results:**
-- Test Loss: 1.2844
-- Test Accuracy: 60.0%
-- Last Character Accuracy: 63.6%
-- Training Time: 1729.3 seconds
-
-**Improvement over Baseline:** 0.7% loss reduction
-
-### 3. Noam Learning Rate Schedule (`transformer__noam.ipynb`) ⭐ BEST
-Implements adaptive learning rate with warmup and inverse square root decay.
-
-**Schedule Formula:**
-```
-lr(step) = d_model^(-0.5) × min(step^(-0.5), step × warmup^(-1.5))
-```
-
-**Configuration:**
-- Optimizer: Adam with Noam schedule
-- Warmup steps: 4,000
-- Peak learning rate: Based on d_model (64)
-- No dropout, no label smoothing
-
-**Results:**
-- **Test Loss: 1.2760** (Best)
-- Test Accuracy: 59.9%
-- Last Character Accuracy: 63.0%
-- Training Time: 1733.0 seconds
-
-**Improvement:** 1.3% over baseline, 0.7% over fixed-LR Adam
-
-### 4. Dropout Regularization (`transformer_dropout.ipynb`)
-Applies dropout (p=0.1) to embeddings, attention weights, and feed-forward layers.
-
-**Results:**
-- Test Loss: 1.3496
-- Test Accuracy: 57.9%
-- Last Character Accuracy: 62.4%
-- Training Time: 1967.1 seconds
-
-**Observation:** Dropout increased test loss by 5.8%, suggesting overregularization.
-
-### 5. Label Smoothing (`transformer_gradient_smoothing.ipynb`)
-Implements label smoothing (ε=0.1) with Noam schedule.
-
-**Results:**
-- Test Loss: 1.7219
-- Test Accuracy: 58.4%
-- Last Character Accuracy: 61.4%
-- Training Time: 1970.5 seconds
-
-**Note:** Higher loss values are expected with label smoothing as it intentionally softens predictions for better calibration.
-
-### 6. LSTM Baseline (`lstm.ipynb`)
-Classical recurrent architecture for comparative analysis.
-
-**Specifications:**
 ```python
-d_model = 128           # Hidden size
-n_layers = 3            # LSTM layers
-max_len = 128           # Sequence length
+vocab_size  = 27
+hidden_size = 128
+n_layers    = 3
+max_len     = 128
+B, T        = 128, 32
+niter       = 10_000
 ```
+
+It uses the same character-level data pipeline and window length as the Transformer.
 
 ## Dataset
 
-**text8 Corpus**
-- Source: Preprocessed English Wikipedia 
-- Preprocessing: Lowercase conversion, punctuation removal, space normalization
-- Training file: `data/text8_train.txt` 
-- Test file: `data/text8_test.txt` 
-- Vocabulary size: 27 characters (a-z + space)
-- Sequence length: 128 characters
+The experiments use the text8 corpus, a 100MB cleaned English Wikipedia dump. Two pre-split files are provided:
 
-The dataset files are already split and preprocessed in the repository.
+- `data/text8_train.txt` – training text
+- `data/text8_test.txt`  – held-out test text
+
+The vocabulary consists of 27 characters (a–z and space). Sequences of length 32 are sampled from the training text; at each position the model predicts the next character.
+
+## Experiments
+
+Each Transformer notebook isolates one main change on top of the shared architecture and data pipeline.
+
+### 1. Baseline Transformer (`transformer.ipynb`)
+
+Decoder-only Transformer with Optax default Adam and fixed learning rate.
+
+Configuration:
+
+- Architecture: Transformer (vocab_size = 27, d_model = 256, n_layers = 2, n_heads = 8, max_len = 128)
+- Optimiser: Adam with Optax defaults
+
+  ```python
+  learning_rate = 0.001
+  tx = optax.adam(learning_rate=learning_rate)  # b1 = 0.9, b2 = 0.999, eps = 1e-8
+  ```
+
+- Learning rate: constant
+- Regularisation: no explicit dropout; no label smoothing
+- Training loop: `niter = 100_000`, `B, T = 128, 32`
+
+Results (test split):
+
+- Test Loss: 1.2931
+- Test Accuracy: 59.4%
+- Last Character Accuracy: 63.0%
+- Training Time: 249.5 s
+
+This configuration serves as the reference point for all subsequent experiments.
+
+### 2. Transformer-paper Adam (`transformer_adam.ipynb`)
+
+Uses the same architecture and data pipeline as the baseline, but changes the Adam hyperparameters to those used in the original Transformer paper.
+
+Configuration:
+
+- Architecture: same as baseline
+- Optimiser: Adam with Transformer-paper settings
+
+  ```python
+  learning_rate = 0.001
+  tx = optax.adam(
+      learning_rate = learning_rate,
+      b1 = 0.9,
+      b2 = 0.98,
+      eps = 1e-9,
+  )
+  ```
+
+- Learning rate: constant
+- Regularisation: no dropout; no label smoothing
+- Training loop: `niter = 100_000`, `B, T = 128, 32`
+
+Results:
+
+- Test Loss: 1.2844
+- Test Accuracy: 60.0%
+- Last Character Accuracy: 63.6%
+- Training Time: 1729.3 s
+
+### 3. Noam Learning Rate Schedule (`transformer _noam.ipynb`)
+
+Combines the Transformer-paper Adam with the Noam learning rate schedule:
+
+```python
+def transformer_lr_schedule(d_model, warmup_steps=4000):
+    def schedule(step):
+        step = jnp.maximum(step, 1)
+        inv_sqrt_step = step ** -0.5
+        scaled_step   = step * (warmup_steps ** -1.5)
+        return (d_model ** -0.5) * jnp.minimum(inv_sqrt_step, scaled_step)
+    return schedule
+```
+
+Configuration:
+
+- Architecture: same as baseline
+- Learning rate: `learning_rate_schedule = transformer_lr_schedule(d_model=256, warmup_steps=4000)`
+- Optimiser:
+
+  ```python
+  tx = optax.adam(
+      learning_rate = learning_rate_schedule,
+      b1 = 0.9,
+      b2 = 0.98,
+      eps = 1e-9,
+  )
+  ```
+
+- Regularisation: no explicit dropout; no label smoothing
+- Training loop: `niter = 100_000`, `B, T = 128, 32`
+
+Results:
+
+- Test Loss: 1.2760
+- Test Accuracy: 59.9%
+- Last Character Accuracy: 63.0%
+- Training Time: 1733.0 s
+
+This configuration achieves the lowest test loss among all Transformer variants.
+
+### 4. “Dropout” Experiment (`transformer_dropout.ipynb`)
+
+In this notebook, the training step is modified to pass a dropout RNG into the model:
+
+```python
+logits = model.apply(
+    {"params": params},
+    x,
+    deterministic=False,
+    rngs={"dropout": dropout_rng},
+)
+```
+
+The optimiser and Noam schedule remain the same as in the previous experiment. The current `DecoderOnlyTransformer` definition does not include `nn.Dropout` layers, so this run mainly validates the RNG wiring rather than applying actual stochastic dropout inside the Transformer blocks.
+
+Configuration:
+
+- Architecture: same as Noam experiment
+- Optimiser: Adam with Noam schedule and (b1 = 0.9, b2 = 0.98, eps = 1e-9)
+- Training loop: `niter = 100_000`, `B, T = 128, 32`
+
+Results:
+
+- Test Loss: 1.3496
+- Test Accuracy: 57.9%
+- Last Character Accuracy: 62.4%
+- Training Time: 1967.1 s
+
+### 5. Label Smoothing (`transformer_gradient_smoothing.ipynb`)
+
+This notebook adds label smoothing to the loss function, while keeping the Noam schedule and Transformer-paper Adam. The training step also passes a dropout RNG as in the previous notebook.
+
+Label smoothing is implemented as:
+
+```python
+one_hot  = jax.nn.one_hot(flat_targets, V)
+smoothed = one_hot * (1.0 - epsilon_ls) + epsilon_ls / V
+loss     = optax.softmax_cross_entropy(flat_logits, smoothed).mean()
+```
+
+Configuration:
+
+- Architecture: same as Noam experiment
+- Optimiser: Adam with Noam schedule (b1 = 0.9, b2 = 0.98, eps = 1e-9)
+- Label smoothing: epsilon_ls = 0.1
+- Training loop: `niter = 100_000`, `B, T = 128, 32`
+
+Results:
+
+- Test Loss: 1.7219
+- Test Accuracy: 58.4%
+- Last Character Accuracy: 61.4%
+- Training Time: 1970.5 s
+
+With label smoothing, the training objective changes and the loss cannot be directly compared quantitatively to the non-smoothed runs, although accuracy remains comparable.
+
+### 6. LSTM Baseline (`lstm.ipynb`)
+
+The LSTM baseline uses the same data and evaluation protocol as the Transformer, but with a recurrent architecture.
+
+Configuration:
+
+```python
+hidden_size = 128
+n_layers    = 3
+max_len     = 128
+B, T        = 128, 32
+niter       = 10_000
+learning_rate = 0.001
+tx = optax.adam(learning_rate=learning_rate)
+```
+
+The LSTM models serve as a classical benchmark for sequence modelling; their performance can be compared against the Transformer variants once evaluated under the same metrics.
 
 ## Results Summary
 
-### Performance Comparison
+A summary of the Transformer experiments on the test split:
 
-| Configuration | Test Loss | Test Accuracy | Last Char Acc. | Training Time (s) |
-|--------------|-----------|---------------|----------------|-------------------|
-| **Noam Schedule** | **1.2760** | **59.9%** | **63.0%** | 1733 |
-| Adam Optimizer | 1.2844 | 60.0% | 63.6% | 1729 |
-| Baseline | 1.2931 | 59.4% | 63.0% | 250 |
-| Dropout | 1.3496 | 57.9% | 62.4% | 1967 |
-| Label Smoothing† | 1.7219 | 58.4% | 61.4% | 1971 |
+| Configuration               | Test Loss | Test Accuracy | Last Char Accuracy | Time (s) |
+|----------------------------|-----------|---------------|--------------------|----------|
+| Noam schedule              | 1.2760    | 59.9%         | 63.0%              | 1733.0   |
+| Transformer-paper Adam     | 1.2844    | 60.0%         | 63.6%              | 1729.3   |
+| Baseline (Optax Adam)      | 1.2931    | 59.4%         | 63.0%              | 249.5    |
+| “Dropout” RNG wiring       | 1.3496    | 57.9%         | 62.4%              | 1967.1   |
+| Label smoothing (ε = 0.1)  | 1.7219    | 58.4%         | 61.4%              | 1970.5   |
 
-†Higher loss expected due to smoothed target distributions
+Key observations:
 
-### Key Findings
+- The Noam schedule, combined with Transformer-paper Adam, achieves the lowest test loss.
+- Changing only the Adam hyperparameters from Optax defaults to the Transformer-paper settings yields a modest but consistent improvement.
+- The label smoothing run shows higher loss by construction, since the targets are softened; accuracy remains close to other configurations.
+- The current codebase wires in dropout RNG but does not yet include explicit dropout layers inside the Transformer.
 
-**1. Learning Rate Scheduling is Critical**
+## Running the Code
 
-The Noam scheduler achieved the lowest test loss (1.2760), demonstrating that adaptive learning rates with warmup significantly improve convergence. The warmup phase prevents early training instabilities while the inverse square root decay enables fine-grained optimization in later stages.
+### Installation
 
-**2. Dropout Can Overregularize Small Models**
-
-Dropout regularization (p=0.1) resulted in worse test performance (1.3496 vs 1.2760), suggesting that for a 308K parameter model trained on 90MB of data, aggressive regularization is counterproductive. The parameter-to-data ratio (1:292K bytes/param) is already data-rich.
-
-**3. Label Smoothing Changes Loss Interpretation**
-
-Label smoothing intentionally increases loss values by adding uncertainty to target distributions. The higher loss (1.7219) reflects better-calibrated predictions rather than worse performance. This technique is valuable when confidence estimates are required.
-
-**4. Character-Level Modeling Ceiling**
-
-All configurations plateau at 58-60% accuracy, reflecting the inherent difficulty of next-character prediction. Character-level models face higher perplexity than word-level models due to increased sequence length requirements and lack of lexical semantic information.
-
-### Training Dynamics
-
-**Generalization Gap (Train Loss - Test Loss):**
-
-| Configuration | Gap | Interpretation |
-|--------------|-----|----------------|
-| Baseline | 0.0102 | Minimal (possible underfitting) |
-| Adam | 0.0285 | Healthy generalization |
-| Dropout | 0.0412 | Moderate despite regularization |
-| Label Smoothing | 0.0398 | Appropriate uncertainty |
-| Noam | 0.0627 | Largest but best test performance |
-
-## Installation and Usage
-
-### Prerequisites
-
-Python 3.8+ with dependencies:
+Install the required Python packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Key Dependencies:**
-- JAX 0.4.x (automatic differentiation and XLA compilation)
-- Flax 0.8.x (neural network library)
-- Optax 0.1.x (optimization library)
-- NumPy, Matplotlib (utilities and visualization)
-
-### Dataset
-
-The text8 dataset is already included in the repository under `data/`:
-- `data/text8_train.txt` - Training data (90MB)
-- `data/text8_test.txt` - Test data (10MB)
-
-If you need to download the original text8 dataset:
-
-```bash
-wget http://mattmahoney.net/dc/text8.zip
-unzip text8.zip
-# Then split into train/test files
-```
-
 ### Running Experiments
 
-Each notebook is self-contained and can be executed independently:
+Launch any of the notebooks in Jupyter:
 
 ```bash
-# Best performing configuration
-jupyter notebook transformer__noam.ipynb
-
-# Adam optimizer baseline
+jupyter notebook transformer.ipynb
 jupyter notebook transformer_adam.ipynb
-
-# Other configurations
+jupyter notebook "transformer _noam.ipynb"
 jupyter notebook transformer_dropout.ipynb
 jupyter notebook transformer_gradient_smoothing.ipynb
+jupyter notebook lstm.ipynb
 ```
 
 ### Text Generation
 
-Generate text samples using trained models:
+Text generation is implemented in `util/generation.py`. A typical usage pattern is:
 
 ```python
 from util.generation import generate_tokens
 
-# Sample with temperature
-generated = generate_tokens(
-    model=model,
-    params=params,
-    rng=rng,
-    context=context,
+# context_ids: (B, T) int32 array of initial character indices
+generated_ids = generate_tokens(
+    model=trained_model,
+    params=trained_params,
+    rng=jax.random.PRNGKey(0),
+    context=context_ids,
     length=500,
-    block_size=128,
+    block_size=64,
     temperature=0.8,
-    sample=True
+    sample=True,
 )
 ```
 
-## Technical Implementation
+The generated token IDs can be mapped back to characters using the `int_to_char` dictionary constructed in the notebooks.
 
-### JAX + Flax Framework
+## Conclusion
 
-This project uses JAX and Flax for several advantages:
-
-**JAX Benefits:**
-- XLA compilation for optimized GPU kernels
-- Automatic differentiation with `grad()`
-- Functional programming paradigm
-- Efficient vectorization with `vmap`
-
-**Flax Benefits:**
-- Clean, modular neural network definitions
-- Explicit parameter management
-- Easy integration with Optax optimizers
-- Functional approach to state management
-
-### Training Configuration
-
-```python
-max_iterations = 100_000
-batch_size = 64
-gradient_clip = 1.0
-warmup_steps = 4_000    # (for Noam schedule)
-evaluation_frequency = 1_000  # iterations
-```
-
-### Optimization
-
-**Adam Hyperparameters:**
-```python
-learning_rate = 0.001   # Base/peak learning rate
-beta1 = 0.9            # First moment decay
-beta2 = 0.999          # Second moment decay
-epsilon = 1e-8         # Numerical stability
-```
-
-**Noam Schedule Implementation:**
-```python
-def transformer_lr_schedule(step, d_model=64, warmup_steps=4000):
-    step = max(step, 1)
-    return d_model**(-0.5) * min(
-        step**(-0.5), 
-        step * warmup_steps**(-1.5)
-    )
-```
-
-## Theoretical Background
-
-### Transformer Architecture
-
-The Transformer replaces recurrent connections with multi-head self-attention:
-
-**Scaled Dot-Product Attention:**
-```
-Attention(Q, K, V) = softmax(QK^T / √d_k) × V
-```
-
-**Multi-Head Attention:**
-```
-MultiHead(Q, K, V) = Concat(head_1, ..., head_h) × W^O
-where head_i = Attention(QW^Q_i, KW^K_i, VW^V_i)
-```
-
-### Optimization Techniques
-
-**Noam Learning Rate Schedule**: Combines linear warmup with inverse square root decay for stable optimization and fine-grained convergence.
-
-**Label Smoothing**: Replaces hard targets with soft distributions: `y_smooth = (1 - ε) × y_true + ε / K`, improving calibration and reducing overconfidence.
-
-**Dropout Regularization**: Randomly zeros neurons during training to prevent co-adaptation and encourage redundant representations.
-
-**Adam Optimizer**: Adaptive moment estimation combining momentum and RMSprop for robust per-parameter learning rates.
-
-## Limitations and Future Work
-
-### Current Limitations
-
-1. **Single Dataset:** Evaluated only on text8
-2. **Small Model:** 308K parameters; larger models may show different patterns  
-3. **Limited Search:** No exhaustive hyperparameter tuning
-4. **Computational Constraints:** Limited to 100K iterations
-
-### Future Directions
-
-**Architecture Improvements:**
-- Implement Flash Attention for efficiency
-- Evaluate Rotary Position Embeddings (RoPE)
-- Test Grouped Query Attention (GQA)
-- Scale to larger models (1M-10M parameters)
-
-**Training Enhancements:**
-- Mixed precision training (FP16/BF16)
-- Gradient checkpointing for memory efficiency
-- Longer contexts (256-512 tokens)
-- Extended training (500K+ iterations)
-
-**Evaluation Extensions:**
-- Multiple datasets (code, multilingual, domain-specific)
-- Calibration error metrics (ECE)
-- Human evaluation of generated samples
-
-## References
-
-### Primary Papers
-
-1. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). **Attention is all you need**. In *Advances in Neural Information Processing Systems* (pp. 5998-6008).
-
-2. Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., & Wojna, Z. (2016). **Rethinking the inception architecture for computer vision**. In *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition* (pp. 2818-2826).
-
-3. Kingma, D. P., & Ba, J. (2015). **Adam: A method for stochastic optimization**. In *International Conference on Learning Representations* (ICLR).
-
-4. Srivastava, N., Hinton, G., Krizhevsky, A., Sutskever, I., & Salakhutdinov, R. (2014). **Dropout: A simple way to prevent neural networks from overfitting**. *The Journal of Machine Learning Research*, 15(1), 1929-1958.
-
-### Implementation References
-
-5. Karpathy, A. (2022). **nanoGPT: A minimal implementation of GPT**. GitHub repository: https://github.com/karpathy/nanoGPT
-
-6. Rush, A. M. (2018). **The Annotated Transformer**. In *Proceedings of Workshop for NLP Open Source Software* (NLP-OSS).
-
-### Dataset
-
-7. Mahoney, M. (2011). **Large Text Compression Benchmark**. Available at: http://mattmahoney.net/dc/textdata.html
-
-
-## License
-
-This project is for educational and research purposes. The architecture implementations are based on techniques described in published research papers.
-
-## Acknowledgments
-
-- Andrej Karpathy for inspirational nanoGPT implementation
-- Google Research for JAX and Flax frameworks  
-- Original Transformer authors (Vaswani et al.) for foundational architecture
-- Text8 dataset creators for benchmark corpus
-
+This repository provides a compact, fully working character-level language modelling setup with a small Transformer and an LSTM baseline. The experiments demonstrate how optimiser hyperparameters, learning rate scheduling, and label smoothing influence the optimisation dynamics of a Transformer at modest scale, and serve as a foundation for further architectural or training improvements.
