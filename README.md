@@ -10,8 +10,8 @@ A systematic implementation and empirical evaluation of character-level Transfor
 char_transformer/
 │
 ├── data/
-│   ├── text8_train.txt          # Training split (90MB)
-│   └── text8_test.txt           # Test split (10MB)
+│   ├── text8_train.txt          # Training split 
+│   └── text8_test.txt           # Test split 
 │
 ├── models/
 │   ├── lstm.py                  # LSTM baseline implementation  
