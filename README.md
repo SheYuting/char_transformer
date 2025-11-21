@@ -1,3 +1,37 @@
+# Character-Level Transformer Language Model: Implementation and Experimental Analysis
+
+A systematic implementation and empirical evaluation of character-level Transformer language models trained on the text8 dataset. This project investigates optimization techniques from "Attention Is All You Need" (Vaswani et al., 2017) including dropout regularization, label smoothing, Noam learning rate scheduling, and the Adam optimizer.
+
+**Repository**: https://github.com/SheYuting/char_transformer
+
+## Repository Structure
+
+```
+char_transformer/
+│
+├── data/
+│   ├── text8_train.txt          # Training split (90MB)
+│   └── text8_test.txt           # Test split (10MB)
+│
+├── models/
+│   ├── lstm.py                  # LSTM baseline implementation  
+│   └── models.py                # Transformer models
+│
+├── util/
+│   └── generation.py            # Text generation functions
+│
+├── lstm.ipynb                   # LSTM baseline experiments
+├── transformer.ipynb            # Baseline Transformer
+├── transformer_adam.ipynb       # Adam optimizer experiments
+├── transformer__noam.ipynb      # Noam learning rate schedule
+├── transformer_dropout.ipynb    # Dropout regularization
+├── transformer_gradient_smoothing.ipynb  # Label smoothing
+│
+├── requirements.txt             # Python dependencies
+├── .gitignore                   # Git ignore patterns
+└── README.md                    # This file
+```
+
 ## Project Overview
 
 This project implements and evaluates character-level sequence models for next-character prediction on the text8 dataset (100MB preprocessed Wikipedia text). The primary focus is systematic comparison of optimization techniques and their impact on training dynamics, convergence behavior, and final model performance.
@@ -369,7 +403,6 @@ where head_i = Attention(QW^Q_i, KW^K_i, VW^V_i)
 7. Mahoney, M. (2011). **Large Text Compression Benchmark**. Available at: http://mattmahoney.net/dc/textdata.html
 
 
-
 ## License
 
 This project is for educational and research purposes. The architecture implementations are based on techniques described in published research papers.
@@ -380,3 +413,4 @@ This project is for educational and research purposes. The architecture implemen
 - Google Research for JAX and Flax frameworks  
 - Original Transformer authors (Vaswani et al.) for foundational architecture
 - Text8 dataset creators for benchmark corpus
+
