@@ -110,7 +110,7 @@ Results (test split):
 
 This configuration serves as the reference point for all subsequent experiments.
 
-### 2. Transformer-paper Adam (`transformer_adam.ipynb`)
+### 2. Adam parameters tuning (`transformer_adam.ipynb`)
 
 Uses the same architecture and data pipeline as the baseline, but changes the Adam hyperparameters to those used in the original Transformer paper.
 
