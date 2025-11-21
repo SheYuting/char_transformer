@@ -54,50 +54,38 @@ class DecoderBlock(nn.Module):
     Args:
       d_model: Hidden size D.
       n_heads: Number of attention heads.
-
-    Input/Output shape: (B, T, D)
+      dropout_rate: Dropout probability used on sublayer outputs.
     """
 
     d_model: int
     n_heads: int
     mlp_ratio: int = 4
+    dropout_rate: float = 0.1
 
     @nn.compact
-    def __call__(self, x, *, mask=None):
-        # Attention sublayer: Pre-LayerNorm -> Self-Attention -> Residual add
+    def __call__(self, x, *, mask=None, deterministic: bool = True):
+        # Attention sublayer: Pre-LayerNorm -> Self-Attention -> Dropout -> Residual
         h = nn.LayerNorm()(x)
         h = nn.SelfAttention(
             num_heads=self.n_heads,
             use_bias=False,
+            dropout_rate=self.dropout_rate,   # dropout inside attention
+            deterministic=deterministic,
         )(h, mask=mask)
+        h = nn.Dropout(rate=self.dropout_rate)(h, deterministic=deterministic)
         x = x + h  # residual connection
 
-        # MLP sublayer: Pre-LayerNorm -> MLP -> Residual add
+        # MLP sublayer: Pre-LayerNorm -> MLP -> Dropout -> Residual
         h = nn.LayerNorm()(x)
         h = MLP(self.d_model, mlp_ratio=self.mlp_ratio)(h)
+        h = nn.Dropout(rate=self.dropout_rate)(h, deterministic=deterministic)
         x = x + h  # residual connection
+
         return x
 
+
 class DecoderOnlyTransformer(nn.Module):
-    """GPT-style decoder-only Transformer for language modeling.
-
-    Components:
-      - Token embeddings: maps token ids to D-dim vectors
-      - Learned positional embeddings: adds position information (0..T-1)
-      - N stacked decoder blocks with causal self-attention
-      - Final LayerNorm
-      - Output projection:
-          * If tie_weights=True (default), reuse token embedding matrix E to
-            compute logits via x @ E^T (implemented via einsum).
-          * Else, use a separate linear head to project to V logits.
-
-    Args:
-      vocab_size: Vocabulary size V.
-      d_model: Hidden size D.
-      n_layers: Number of decoder blocks.
-      n_heads: Attention heads per block.
-      max_len: Maximum supported sequence length for positional embeddings.
-    """
+    """GPT-style decoder-only Transformer for language modeling."""
 
     vocab_size: int
     d_model: int
@@ -105,13 +93,13 @@ class DecoderOnlyTransformer(nn.Module):
     n_heads: int
     max_len: int
     mlp_ratio: int = 4
+    dropout_rate: float = 0.1   # 新增字段：整体使用的dropout率
 
     def setup(self):
         # Token embedding table E with shape (V, D)
         self.tok_embed = nn.Embed(self.vocab_size, self.d_model)
 
         # Learned positional embeddings P with shape (max_len, D)
-        # We'll slice P[:T] each forward pass and add to token embeddings.
         self.positional_embed = self.param(
             "positional_embed",
             nn.initializers.normal(stddev=0.02),
@@ -119,40 +107,52 @@ class DecoderOnlyTransformer(nn.Module):
         )
 
         # Stack of decoder blocks
-        self.blocks = [DecoderBlock(d_model=self.d_model, n_heads=self.n_heads, mlp_ratio=self.mlp_ratio) for _ in range(self.n_layers)]
+        self.blocks = [
+            DecoderBlock(
+                d_model=self.d_model,
+                n_heads=self.n_heads,
+                mlp_ratio=self.mlp_ratio,
+                dropout_rate=self.dropout_rate,      # 把同样的dropout率传给每一层
+            )
+            for _ in range(self.n_layers)
+        ]
 
         # Final LayerNorm before projecting to logits
         self.layerNorm_final = nn.LayerNorm()
 
-        # Optional separate output head if not weight-tying
+        # Embedding-level dropout (embedding + positional)
+        self.dropout = nn.Dropout(rate=self.dropout_rate)
+
+        # Output projection
         self.project_to_vocab = nn.Dense(self.vocab_size, use_bias=False)
 
-    def __call__(self, idx):
+    def __call__(self, idx, deterministic: bool = True):
         """Forward pass (causal-only).
 
         Args:
-          idx: Token ids of shape (B, T), dtype int32/int64.
+          idx: Token ids of shape (B, T).
 
         Returns:
-          logits: (B, T, V) unnormalized vocabulary scores for next-token prediction.
+          logits: (B, T, V)
         """
         B, T = idx.shape
 
         # Token + positional embeddings -> (B, T, D)
         x = self.tok_embed(idx) + self.positional_embed[:T]
+        # Dropout on embeddings (论文说在 embedding + position 之后加)
+        x = self.dropout(x, deterministic=deterministic)
 
-        # Build attention mask: strictly causal (lower-triangular), no padding mask.
+        # Build causal mask
         causal = attn.make_causal_mask(jnp.ones((B, T), dtype=bool))
         mask = causal
 
-        # Run the stack of decoder blocks
+        # Decoder blocks with dropout
         for blk in self.blocks:
-            x = blk(x, mask=mask)
+            x = blk(x, mask=mask, deterministic=deterministic)
 
-        # Final LayerNorm before output projection
+        # Final LayerNorm
         x = self.layerNorm_final(x)
 
-        # Output projection to logits over V tokens.
+        # Output projection to logits
         logits = self.project_to_vocab(x)
-        
         return logits
